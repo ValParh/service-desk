@@ -1,0 +1,219 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Модель пользователя
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  firstName     String?
+  lastName      String?
+  middleName    String?
+  email         String    @unique
+  emailVerified DateTime?
+  password      String?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  role          Role      @default(USER)
+  department    String?
+  position      String?
+  location      String?
+  organization  String?
+
+  // Отношения
+  accounts      Account[]
+  sessions      Session[]
+  tickets       Ticket[]        @relation("TicketCreator")
+  assignedTickets Ticket[]      @relation("TicketAssignee")
+  comments      Comment[]
+  articles      KnowledgeArticle[] @relation("ArticleAuthor")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// Роли пользователей
+enum Role {
+  USER
+  TECHNICIAN
+  ADMIN
+}
+
+// Модель заявки
+model Ticket {
+  id          String   @id @default(cuid())
+  title       String
+  description String   @db.Text
+  status      TicketStatus @default(OPEN)
+  priority    TicketPriority @default(MEDIUM)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  resolvedAt  DateTime?
+  
+  // Отношения
+  creatorId   String
+  creator     User     @relation("TicketCreator", fields: [creatorId], references: [id])
+  assigneeId  String?
+  assignee    User?    @relation("TicketAssignee", fields: [assigneeId], references: [id])
+  
+  department  String?
+  location    String?
+  equipmentType String?
+  
+  comments    Comment[]
+  attachments Attachment[]
+}
+
+// Статусы заявок
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+// Приоритеты заявок
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// Модель комментария
+model Comment {
+  id        String   @id @default(cuid())
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Отношения
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  ticketId  String?
+  ticket    Ticket?  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  articleId String?
+  article   KnowledgeArticle? @relation(fields: [articleId], references: [id], onDelete: Cascade)
+}
+
+// Модель вложения
+model Attachment {
+  id        String   @id @default(cuid())
+  name      String
+  url       String
+  type      String
+  size      Int
+  createdAt DateTime @default(now())
+  
+  // Отношения
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+}
+
+// Модель статьи базы знаний
+model KnowledgeArticle {
+  id          String   @id @default(cuid())
+  title       String
+  content     String   @db.Text
+  slug        String   @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  publishedAt DateTime?
+  viewCount   Int      @default(0)
+  featured    Boolean  @default(false)
+  allowComments Boolean @default(true)
+  
+  // Отношения
+  authorId    String
+  author      User     @relation("ArticleAuthor", fields: [authorId], references: [id])
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id])
+  
+  tags        TagsOnArticles[]
+  comments    Comment[]
+  relatedArticles ArticleRelation[] @relation("SourceArticle")
+  relatedToArticles ArticleRelation[] @relation("TargetArticle")
+}
+
+// Связь между статьями (для связанных статей)
+model ArticleRelation {
+  id            String @id @default(cuid())
+  sourceId      String
+  sourceArticle KnowledgeArticle @relation("SourceArticle", fields: [sourceId], references: [id], onDelete: Cascade)
+  targetId      String
+  targetArticle KnowledgeArticle @relation("TargetArticle", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceId, targetId])
+}
+
+// Модель категории
+model Category {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  slug        String   @unique
+  
+  // Отношения
+  articles    KnowledgeArticle[]
+}
+
+// Модель тега
+model Tag {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  slug        String   @unique
+  
+  // Отношения
+  articles    TagsOnArticles[]
+}
+
+// Связь многие-ко-многим между статьями и тегами
+model TagsOnArticles {
+  articleId   String
+  article     KnowledgeArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  tagId       String
+  tag         Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, tagId])
+}
